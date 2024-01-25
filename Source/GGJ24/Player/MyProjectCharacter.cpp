@@ -10,13 +10,19 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
 #include "..\UI\Settings\Category\Bindings\Configuration\CustomInputComponent.h"
+#include "GGJ24/GrabableObject.h"
 #include "GGJ24/UI/Settings/LocalSettings.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "UserSettings/EnhancedInputUserSettings.h"
 
 //////////////////////////////////////////////////////////////////////////
 // AMyProjectCharacter
 
-AMyProjectCharacter::AMyProjectCharacter()
+AMyProjectCharacter::AMyProjectCharacter() :
+	RadiusGrab(500.f),
+	DebugMode(false),
+	PlayerId(0),
+	IsCarrying(false)
 {
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
@@ -37,20 +43,6 @@ AMyProjectCharacter::AMyProjectCharacter()
 	GetCharacterMovement()->MaxWalkSpeed = 500.f;
 	GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
 	GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
-
-	// Create a camera boom (pulls in towards the player if there is a collision)
-	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
-	CameraBoom->SetupAttachment(RootComponent);
-	CameraBoom->TargetArmLength = 400.0f; // The camera follows at this distance behind the character	
-	CameraBoom->bUsePawnControlRotation = true; // Rotate the arm based on the controller
-
-	// Create a follow camera
-	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
-	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName); // Attach the camera to the end of the boom and let the boom adjust to match the controller orientation
-	FollowCamera->bUsePawnControlRotation = false; // Camera does not rotate relative to arm
-
-	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
-	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
 }
 
 void AMyProjectCharacter::BeginPlay()
@@ -114,13 +106,62 @@ void AMyProjectCharacter::SetupPlayerInputComponent(class UInputComponent* Playe
 
 		//Moving
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AMyProjectCharacter::Move);
-
-		//Looking
-		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AMyProjectCharacter::Look);
-		EnhancedInputComponent->BindAction(LookActionGamepad, ETriggerEvent::Triggered, this, &AMyProjectCharacter::Look);
-
+		
 		//Escape
 		EnhancedInputComponent->BindAction(EscapeAction, ETriggerEvent::Triggered, this, &AMyProjectCharacter::Escape);
+
+		//Grab
+		EnhancedInputComponent->BindAction(GrabAction, ETriggerEvent::Started, this, &AMyProjectCharacter::TryGrabObject);
+		EnhancedInputComponent->BindAction(GrabAction, ETriggerEvent::Completed, this, &AMyProjectCharacter::ReleaseObject);
+		 
+	}
+}
+
+void AMyProjectCharacter::TryGrabObject()
+{
+	TArray<FHitResult> OutHits;
+
+	TArray<AActor*> ActorsToIgnore;
+	ActorsToIgnore.Add(this);
+	
+	FVector Center = GetActorLocation() + GetActorForwardVector() * 50.f;
+
+	UKismetSystemLibrary::SphereTraceMulti(GetWorld(), Center, Center, RadiusGrab,
+	                                       UEngineTypes::ConvertToTraceType(ECC_Visibility), false, ActorsToIgnore,
+	                                       EDrawDebugTrace::None, OutHits, true);
+
+	if ( DebugMode )
+	{
+		UKismetSystemLibrary::DrawDebugSphere(GetWorld(), Center, RadiusGrab, 12, FLinearColor::Red, 5.f, 1.f);
+	}
+
+	for (FHitResult Hit : OutHits)
+	{
+		if ( Hit.GetActor()->IsA(AGrabableObject::StaticClass()) )
+		{
+			if (AGrabableObject* GrabableObject = Cast<AGrabableObject>(Hit.GetActor()))
+			{
+				GrabbedObject = GrabableObject;
+				
+
+				GrabbedObject->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, FName("GrabSocket"));
+				GrabbedObject->SetActorLocation(GrabbedObject->GrabPoint->GetComponentLocation());
+				
+				
+				IsCarrying = true;
+				break;
+			}
+		}
+	}
+}
+
+void AMyProjectCharacter::ReleaseObject()
+{
+	if ( GrabbedObject )
+	{
+		GrabbedObject->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+		GrabbedObject = nullptr;
+		IsCarrying = false;
 	}
 }
 
@@ -144,18 +185,5 @@ void AMyProjectCharacter::Move(const FInputActionValue& Value)
 		// add movement 
 		AddMovementInput(ForwardDirection, MovementVector.Y);
 		AddMovementInput(RightDirection, MovementVector.X);
-	}
-}
-
-void AMyProjectCharacter::Look(const FInputActionValue& Value)
-{
-	// input is a Vector2D
-	FVector2D LookAxisVector = Value.Get<FVector2D>();
-
-	if (Controller != nullptr)
-	{
-		// add yaw and pitch input to controller
-		AddControllerYawInput(LookAxisVector.X);
-		AddControllerPitchInput(LookAxisVector.Y);
 	}
 }
