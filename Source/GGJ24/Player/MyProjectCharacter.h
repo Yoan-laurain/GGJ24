@@ -8,25 +8,11 @@ struct FInputMappingContextAndPriority;
 class UCustomInputConfig;
 struct FGameplayTag;
 class UInputAction;
-class USpringArmComponent;
-class UCameraComponent;
 
 UCLASS(config=Game)
 class AMyProjectCharacter : public ACharacter
 {
 	GENERATED_BODY()
-
-#pragma region Components
-
-	/** Camera boom positioning the camera behind the character */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
-	USpringArmComponent* CameraBoom;
-
-	/** Follow camera */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
-	UCameraComponent* FollowCamera;
-
-#pragma endregion Components
 
 #pragma region Inputs
 	
@@ -37,29 +23,43 @@ class AMyProjectCharacter : public ACharacter
 	/** Move Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* MoveAction;
-
-	/** Look Input Action */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* LookAction;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* LookActionGamepad;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* EscapeAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* GrabAction;
 
 #pragma endregion Inputs
 
 public:
 	AMyProjectCharacter();
 
+	UPROPERTY(BlueprintReadWrite,EditAnywhere)
+	float RadiusGrab;
+	
+	UPROPERTY(BlueprintReadWrite,EditAnywhere)
+	bool DebugMode;
+
+	UPROPERTY(BlueprintReadWrite,EditAnywhere)
+	int PlayerId;
+
+	UFUNCTION(BlueprintCallable)
+	void TryGrabObject();
+
+	UFUNCTION(BlueprintCallable)
+	void ReleaseObject();
+
+	UPROPERTY(BlueprintReadWrite,EditAnywhere)
+	class AGrabableObject* GrabbedObject;
+
+	UPROPERTY(BlueprintReadWrite,EditAnywhere)
+	bool IsCarrying;
+	
 protected:
 
 	/** Called for movement input */
 	void Move(const FInputActionValue& Value);
-
-	/** Called for looking input */
-	void Look(const FInputActionValue& Value);
 
 	UFUNCTION(BlueprintImplementableEvent)
 	void Escape();
@@ -79,11 +79,5 @@ protected:
 	virtual void InitializePlayerInput(UInputComponent* PlayerInputComponent);
 	
 	virtual void BeginPlay() override;
-
-public:
-	/** Returns CameraBoom subobject **/
-	FORCEINLINE USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
-	/** Returns FollowCamera subobject **/
-	FORCEINLINE UCameraComponent* GetFollowCamera() const { return FollowCamera; }
 };
 
